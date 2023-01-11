@@ -1,4 +1,5 @@
 const UtilizadorService = require('../services/UtilizadoresService'); // Usa o serviço para dar a resposta ao controlador
+const SessaoTreinoService = require('../services/SessaoTreinoService');
 const bcrypt = require('bcrypt')
 const path = require('path')
 
@@ -136,7 +137,7 @@ module.exports = {
 
 	},
 
-	
+
 
 	editar_utilizador_post: async (req, res) => {
 
@@ -175,7 +176,7 @@ module.exports = {
 			})
 
 		} else {
-			res.render('app/utilizador/nao_encontrado', {user: req.user})
+			res.render('app/utilizador/nao_encontrado', { user: req.user })
 		}
 	},
 
@@ -209,8 +210,94 @@ module.exports = {
 
 	},
 
-	criar_plano_treino: async(req, res) => {
-		res.render('app/criar_plano_treino')		
+	criar_sessao_treino: async (req, res) => {
+		res.render('app/criar_sessao_treino', { user: req.user })
+	},
+
+	criar_sessao_treino_post: async (req, res) => {
+		let json = { error: '', result: [] };
+
+		// Buscar os valores
+		let nome = req.body.nome;
+		let descricao = req.body.descricao;
+		let userid = req.user.id;
+
+		if (nome && descricao && userid) {
+			// Verifica se a sessão do treino já existe, se existir, lanca aviso
+			let existeTreino = await SessaoTreinoService.buscarTodos_user_nome(userid, nome);
+			if (existeTreino.length > 0) {
+				req.flash('error', `Sessão ${nome} já existe!`)
+			} else {
+				// Cria a sessão de treino com o nome e descricao
+				await SessaoTreinoService.criar(nome, descricao, userid);
+				req.flash('success', `Sessão ${nome} criado com sucesso!`)
+			}
+		} else {
+			req.flash('error', `Erro ao criar sessao de treino`)
+		}
+		res.redirect('/lista_sessao_treino')
+	},
+
+	ver_sessoes_treinos: async (req, res) => {
+		let json = { error: '', result: [] };
+
+		// Pega o id do utilizador que está com sessão iniciada
+		let userid = req.user.id;
+
+		// Pega todos as sessões de treino criado pelo utilizador
+		let SessoesTreino_user = await SessaoTreinoService.buscarTodos_user(userid);
+
+		// Buscar os valores
+		for (let i in SessoesTreino_user) {
+			json.result.push({
+				id: SessoesTreino_user[i].id,
+				nome: SessoesTreino_user[i].nome,
+				descricao: SessoesTreino_user[i].descricao,
+				createdAt: SessoesTreino_user[i].createdAt.toLocaleDateString('pt-PT', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+				estado: SessoesTreino_user[i].estado
+
+			});
+		}
+
+		// Mandar os valores
+		res.render('app/lista_sessoes_treinos', { user: req.user, rows: json.result, success: req.flash("success"), error: req.flash("error") })
+	},
+
+	ver_sessao: async (req, res) => {
+		let json = { error: '', result: [] };
+
+		// Id da sessão de treino
+		let id = req.params.id;
+
+		// Id do utilizador que está com sessão iniciada
+		let userid = req.user.id
+
+		let sessaoTreino = await SessaoTreinoService.buscarUm(id);
+
+		// Verifica se existe a sessão de treino com esse id
+		if (!sessaoTreino) {
+			json.error = "Sessão de treino não encontrado!"
+		} else {
+			// Utilizador não pode visualizar as sessões de treino de outros utilizadores diferentes
+			sessaoTreino_utilizador_id = sessaoTreino[0].utilizador_id
+			if (sessaoTreino_utilizador_id != userid) {
+				json.error = 'Não tem permissão!'
+			} else {
+				json.result = sessaoTreino
+			}
+		}
+
+		res.json(json)
+
+	},
+
+	apagar_sessao_treino: async (req, res) => {
+		let json = { error: '', result: [] };
+		// Chama o serviço apagar para apagar o dado através do id
+		let apagado = await SessaoTreinoService.apagar(req.params.id);
+		if (apagado) {
+			res.redirect('/lista_sessao_treino')
+		}
 	},
 
 	// Atualizar as informações do perfil do utilizador
@@ -236,11 +323,11 @@ module.exports = {
 	},
 
 	// Mudar palavra passe
-	mudar_pass: async(req, res)=> {
-		res.render('app/utilizador/mudar_pass', {user: req.user})
+	mudar_pass: async (req, res) => {
+		res.render('app/utilizador/mudar_pass', { user: req.user })
 	},
 
-	mudar_pass_post: async(req, res)=> {
+	mudar_pass_post: async (req, res) => {
 		let json = { error: '', result: [] };
 
 		// Pega os valores username, password atual, confirmar password e nova password
@@ -257,8 +344,8 @@ module.exports = {
 			// Se coincidir a password que foi nos enviado com a password do utilizador
 			if (await bcrypt.compare(palavra_passe_atual, utilizador.password)) {
 				json.result = "SUCESSO!"; // Sucesso
-				if(confirmar_palavra_passe === nova_palavra_passe){
-					
+				if (confirmar_palavra_passe === nova_palavra_passe) {
+
 					const salt = await bcrypt.genSalt();
 					const hashedNewPassword = await bcrypt.hash(nova_palavra_passe, salt); // Encriptar a password
 
@@ -275,7 +362,7 @@ module.exports = {
 			// Se o username não existir na tabela Utilizadores
 		}
 
-		res.render('app/utilizador/mudar_pass', {alert: json.result, user: req.user})
+		res.render('app/utilizador/mudar_pass', { alert: json.result, user: req.user })
 	},
 
 	atualizar_perfil_foto: async (req, res) => {
@@ -415,8 +502,8 @@ module.exports = {
 		// Manda a resposta do servidor em JSON
 	},
 
-	pesquisarUtilizador: async(req, res) => {
-		let json = {error: '', result:[]};
+	pesquisarUtilizador: async (req, res) => {
+		let json = { error: '', result: [] };
 
 		// Pega o valor que nos foi enviado na barra de pesquisa
 		let pesquisa = req.body.pesquisa;
@@ -424,7 +511,7 @@ module.exports = {
 		// Com o valor que foi nos enviado, vai chamar o serviço pesquisarUtilizador
 		let utilizador = await UtilizadorService.pesquisarUtilizador(pesquisa);
 
-		if(utilizador){
+		if (utilizador) {
 			json.result = utilizador;
 		} else {
 			json.error = "err"
@@ -433,10 +520,10 @@ module.exports = {
 		// Resultado do serviço armazenado em rows
 		rows = json.result;
 
-		var keyCount  = Object.keys(rows).length; 
+		var keyCount = Object.keys(rows).length;
 
 		// Mostra o resultado
-		res.render('admin/Utilizadores/pesquisa', {layout: 'tabela_utilizadores_crud', rows, user: req.user,alert: `${keyCount} resultados encontrados!`})
+		res.render('admin/Utilizadores/pesquisa', { layout: 'tabela_utilizadores_crud', rows, user: req.user, alert: `${keyCount} resultados encontrados!` })
 
 	},
 
